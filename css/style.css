@@ -1,0 +1,125 @@
+@charset "utf-8";
+html {
+	background: url(../img/body_bg.png) repeat-x 50% 0% #000;
+	font: 0.75em/1.5em Arial, "Helvetica CY", "Nimbus Sans L", sans-serif;
+	color:#eee;
+}
+html, body {
+	margin:0;
+}
+textarea {
+	font:1rem/1.5em Arial, "Helvetica CY", "Nimbus Sans L", sans-serif;
+}
+article, aside, footer, header, hgroup, nav, section {
+	display: block;
+}
+a {
+	color:#1194c4;
+	text-decoration:underline;
+}
+a:hover {
+	text-decoration:none;
+}
+:focus {
+	outline:none;
+}
+img {
+	border:0;
+}
+p {
+	margin:0 0 1.5rem;
+}
+h1, .h1 {
+	font-size: 2rem;
+	line-height: 1.3em;
+	font-weight: bold;
+	margin:0;
+}
+h2, .h2 {
+	font-size: 1.8333rem;
+	line-height: 1.4em;
+	margin:0;
+}
+h3, .h3 {
+	font-size: 1.6667rem;
+	line-height: 1.4em;
+	margin:0;
+}
+h4, .h4 {
+	font-size: 1.5rem;
+	line-height: 1.5em;
+	margin:0;
+}
+h5, .h5 {
+	font-size: 1.3333rem;
+	line-height: 1.5em;
+	margin:0;
+}
+h6, .h6 {
+	font-size: 1.1667rem;
+	line-height: 1.5em;
+	margin:0;
+}
+.wrap {
+	width: 1002px;
+	margin: auto;
+	padding: 60px 0 0;
+}
+.cont {
+	width: 100%;
+	min-height: 1px;
+	float: left;
+	padding: 0px 200px 0 0;
+	-moz-box-sizing: border-box;
+	box-sizing: border-box;
+}
+/* GamePlay */
+.cnvs {
+	width: 800px;
+	height: 600px;
+	display: block;
+	border: 1px dashed #080;
+	margin: auto;
+}
+
+/* aside */
+.aside {
+	width: 200px;
+	float: left;
+	margin: 0 0 0 -200px;
+	-moz-box-sizing: border-box;
+	box-sizing: border-box;
+}
+.gametitle {
+	background: url(../img/sprite.png) no-repeat 100% 0 #fff;
+	width: 100%;
+	height: 100px;
+	text-indent: -9999px;
+}
+.gameData {
+	padding: 5px;
+}
+
+/* clearfix */
+.clearfix {
+	-height: 1%;
+	*zoom: 1;
+	display: table;
+}
+.clearfix:after {
+	content: '. . . . . . . . . . .';
+	font: .13em/0 sans-serif;
+	display: block;
+	word-spacing: 99in;
+	height: 0;
+	overflow: hidden;
+}
+/* end clearfix */
+
+
+@media \0screen\,screen\9 {
+	/* IE6-8 only */
+}
+@media print {
+	
+}
