@@ -74,6 +74,8 @@ onReady(function(){
 			/* Write out Level */
 			document.querySelector('.level').innerHTML = this.level;
 
+			mobsGroup.create();
+
 			this.started = true;
 		},
 		update : function(){
@@ -81,8 +83,8 @@ onReady(function(){
 			document.querySelector('.score').innerHTML = this.score;
 
 			ship.update(ctx);
-
-			mob.update(ctx);
+			mobsGroup.update(ctx);
+			
 		}
 	};
 	
@@ -101,7 +103,7 @@ onReady(function(){
 		this.clearScene();
 
 		ship.draw(this);
-		mob.draw(this);
+		mobsGroup.draw(this);
 	};
 
 	/* cxt FPS */
@@ -222,9 +224,8 @@ onReady(function(){
 		this.width = settings.width || 32;
 		this.height = settings.height || 32;
 		this.x = settings.x || 0;
-		this.y = settings.y || 0,
-		this.vx = settings.vx || 0;
-		this.vy = settings.vy || 0;
+		this.y = settings.y || 0;
+		
 		this.type = settings.type || 1;
 		this.inScene = function(ctx) {
 			return this.x >= 0 && (this.x + this.width) <= ctx.canvas.width &&
@@ -239,6 +240,63 @@ onReady(function(){
 			ctx.fillRect(this.x, this.y, this.width, this.height);
 		};
 		this.update = function(ctx){
+			this.active = this.active;
+		};
+	};
+
+	/* Mobs Group */
+	var MobsGroup = function(settings) {
+		var settings = settings || {};
+		this.mobWidth = settings.mobWidth || 32;
+		this.mobHeight = settings.mobHeight || 32;
+		this.margin = settings.margin || 5;
+		this.mobsMap = settings.mobsMap || [[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+											[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+											[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+											[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+											[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
+		this.mobsStack = [];
+		this.x = 0;
+		this.y = 10;
+		this.width = 0;
+		this.height = 0;
+		this.create = function(){
+			this.vx = (ctx.canvas.width * 0.05) * game.level;
+			this.vy = (ctx.canvas.height * 0.01) * game.level;
+			this.width = this.mobsMap[0].length * this.mobWidth + (this.mobsMap[0].length - 1) * this.margin;
+			this.height = this.mobsMap.length * this.mobHeight + (this.mobsMap.length - 1) * this.margin;
+			this.x = (ctx.canvas.width - this.width) / 2;
+			for(var i = 0; i < this.mobsMap.length; i++) {
+				var tmp = [];
+				for(var j = 0; j < this.mobsMap[i].length; j++){
+					tmp.push(new Mob({
+						width : this.mobWidth,
+						height : this.mobHeight,
+						x : (this.mobWidth + this.margin) * j + this.x,
+						y : (this.mobHeight + this.margin) * i + this.y,
+						type : this.mobsMap[i][j]
+					}));
+				}
+				this.mobsStack.push(tmp);
+			};
+		};
+		this.update = function(ctx){
+			var $this = this;
+			$this.x = Infinity;
+			$this.width = 0;
+			this.mobsStack = this.mobsStack.filter(function(row){
+				var tmp = row.filter(function(mob){
+					if (mob.active) {
+						mob.update(ctx);
+						$this.x = Math.min($this.x, mob.x);
+						$this.width = Math.max($this.width, mob.x + mob.width);
+					};
+					return mob.active;
+				});
+				return tmp.length;
+			});
+			this.width -= this.x;
+
 			var tmpX = this.x + (ctx.diffFrameTick / 1000) * this.vx;
 			if (tmpX + this.width > ctx.canvas.width) {
 				this.x = ctx.canvas.width - (tmpX + this.width - ctx.canvas.width) - this.width;
@@ -253,15 +311,24 @@ onReady(function(){
 			else {
 				this.x = tmpX;
 			};
-			this.active = this.active;
+			for (var i = 0; i < this.mobsStack.length; i++) {
+				for (var j = 0; j < this.mobsStack[i].length; j++) {
+					this.mobsStack[i][j].x = (this.mobWidth + this.margin) * j + this.x;
+					this.mobsStack[i][j].y = (this.mobHeight + this.margin) * i + this.y;
+				};
+			};
+		};
+		this.draw = function(ctx){
+			for (var i = 0; i < this.mobsStack.length; i++) {
+				for (var j = 0; j < this.mobsStack[i].length; j++) {
+					this.mobsStack[i][j].draw(ctx);
+				};
+			};
 		};
 	};
 
-	/* Create Mob */
-	var mob = new Mob({
-		vx : ctx.canvas.width * 0.05,
-		vy : ctx.canvas.height * 0.01
-	});
+	/* Create MobsGroup */
+	var mobsGroup = new MobsGroup();
 
 
 
