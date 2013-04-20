@@ -57,6 +57,12 @@ onReady(function(){
 		// e.preventDefault ? e.preventDefault() : (e.returnValue = false);
 	});
 
+	window.addEventListener('blur', function() {
+		// console.log('window blured!');
+	}, false);
+	window.addEventListener('focus', function() {
+		// console.log('window focused!');
+	}, false);
 
 	/* Game Config */
 	var game = {
@@ -67,12 +73,16 @@ onReady(function(){
 		start : function(){
 			/* Write out Level */
 			document.querySelector('.level').innerHTML = this.level;
+
+			this.started = true;
 		},
 		update : function(){
 			/* Write out Score */
 			document.querySelector('.score').innerHTML = this.score;
 
 			ship.update(ctx);
+
+			mob.update(ctx);
 		}
 	};
 	
@@ -91,6 +101,7 @@ onReady(function(){
 		this.clearScene();
 
 		ship.draw(this);
+		mob.draw(this);
 	};
 
 	/* cxt FPS */
@@ -172,9 +183,9 @@ onReady(function(){
 	/* Create is new Ship */
 	var ship = new Ship({
 		color : '#f80',
-		width : 40,
+		width : 32,
 		height : 28,
-		x : (ctx.canvas.width - 40) / 2,
+		x : (ctx.canvas.width - 32) / 2,
 		y : ctx.canvas.height - 28,
 		step : ctx.canvas.width * .2
 	});
@@ -204,6 +215,54 @@ onReady(function(){
 		};
 	};
 
+	/* Mob */
+	var Mob = function(settings){
+		this.active = true;
+		this.color = settings.color || '#0f0';
+		this.width = settings.width || 32;
+		this.height = settings.height || 32;
+		this.x = settings.x || 0;
+		this.y = settings.y || 0,
+		this.vx = settings.vx || 0;
+		this.vy = settings.vy || 0;
+		this.type = settings.type || 1;
+		this.inScene = function(ctx) {
+			return this.x >= 0 && (this.x + this.width) <= ctx.canvas.width &&
+					this.y >= 0 && (this.y + this.height) <= ctx.canvas.height;
+		};
+		this.explode = function(ctx) {
+			game.score += 10 * this.type;
+			this.active = false;
+		};
+		this.draw = function(ctx){
+			ctx.fillStyle = this.color;
+			ctx.fillRect(this.x, this.y, this.width, this.height);
+		};
+		this.update = function(ctx){
+			var tmpX = this.x + (ctx.diffFrameTick / 1000) * this.vx;
+			if (tmpX + this.width > ctx.canvas.width) {
+				this.x = ctx.canvas.width - (tmpX + this.width - ctx.canvas.width) - this.width;
+				this.y += this.vy;
+				this.vx = -this.vx;
+			}
+			else if(tmpX < 0) {
+				this.x = -tmpX;
+				this.y += this.vy;
+				this.vx = -this.vx;
+			}
+			else {
+				this.x = tmpX;
+			};
+			this.active = this.active;
+		};
+	};
+
+	/* Create Mob */
+	var mob = new Mob({
+		vx : ctx.canvas.width * 0.05,
+		vy : ctx.canvas.height * 0.01
+	});
+
 
 
 	
@@ -212,6 +271,11 @@ onReady(function(){
 	(function run () {
 		/* Write out FPS */
 		document.querySelector('.fps').innerHTML = ctx.getFPS();
+
+		/* Start Game */
+		if (!game.started) {
+			game.start();
+		};
 
 		/* Update States */
 		game.update();
