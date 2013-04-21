@@ -82,9 +82,9 @@ onReady(function(){
 			/* Write out Score */
 			document.querySelector('.score').innerHTML = this.score;
 
+			handleCollisions();
 			ship.update(ctx);
 			mobsGroup.update(ctx);
-			
 		}
 	};
 	
@@ -257,7 +257,7 @@ onReady(function(){
 											[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
 		this.mobsStack = [];
 		this.x = 0;
-		this.y = 10;
+		this.y = 40;
 		this.width = 0;
 		this.height = 0;
 		this.create = function(){
@@ -284,20 +284,25 @@ onReady(function(){
 			var $this = this;
 			$this.x = Infinity;
 			$this.width = 0;
-			this.mobsStack = this.mobsStack.filter(function(row){
-				var tmp = row.filter(function(mob){
+			for (var i = 0; i < this.mobsStack.length; i++) {
+				this.mobsStack[i] = this.mobsStack[i].filter(function(mob){
 					if (mob.active) {
 						mob.update(ctx);
 						$this.x = Math.min($this.x, mob.x);
 						$this.width = Math.max($this.width, mob.x + mob.width);
-					};
+					}
 					return mob.active;
 				});
-				return tmp.length;
+			};
+			this.mobsStack = this.mobsStack.filter(function(row){
+				return row.length;
 			});
+			var oldX = this.x,
+				oldY = this.y;
 			this.width -= this.x;
 
 			var tmpX = this.x + (ctx.diffFrameTick / 1000) * this.vx;
+			
 			if (tmpX + this.width > ctx.canvas.width) {
 				this.x = ctx.canvas.width - (tmpX + this.width - ctx.canvas.width) - this.width;
 				this.y += this.vy;
@@ -313,8 +318,8 @@ onReady(function(){
 			};
 			for (var i = 0; i < this.mobsStack.length; i++) {
 				for (var j = 0; j < this.mobsStack[i].length; j++) {
-					this.mobsStack[i][j].x = (this.mobWidth + this.margin) * j + this.x;
-					this.mobsStack[i][j].y = (this.mobHeight + this.margin) * i + this.y;
+					this.mobsStack[i][j].x += (this.x - oldX);
+					this.mobsStack[i][j].y += (this.y - oldY);
 				};
 			};
 		};
@@ -331,7 +336,24 @@ onReady(function(){
 	var mobsGroup = new MobsGroup();
 
 
-
+	function collides(a, b) {
+		return a.x < b.x + b.width &&
+			a.x + a.width > b.x &&
+			a.y < b.y + b.height &&
+			a.y + a.height > b.y;
+	}
+	function handleCollisions() {
+		ship.rocketStack.forEach(function(rocket) {
+			mobsGroup.mobsStack.forEach(function(row) {
+				row.forEach(function(mob){
+					if (collides(rocket, mob)) {
+						mob.explode();
+						rocket.active = false;
+					}
+				});
+			});
+		});
+	}
 	
 
 	/* Main function of Game */
