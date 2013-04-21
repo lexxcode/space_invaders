@@ -58,7 +58,9 @@ onReady(function(){
 	});
 
 	window.addEventListener('blur', function() {
-		// console.log('window blured!');
+		if (game.started) {
+			game.pause();
+		};
 	}, false);
 	window.addEventListener('focus', function() {
 		// console.log('window focused!');
@@ -68,29 +70,102 @@ onReady(function(){
 	var game = {
 		level : 0,
 		score : 0,
+		inited : false,
 		started : false,
 		paused : false,
+		escItr : true,
+		init : function(){
+			$thisGame = this;
+			this.menu = document.createElement('div');
+			this.menu.classList.add('gameMenu');
+
+			this.menu.resumegame = document.createElement('button');
+			this.menu.resumegame.id = 'resumegame';
+			this.menu.resumegame.classList.add('game-btn');
+			this.menu.resumegame.classList.add('hide');
+			this.menu.resumegame.innerHTML = "Resume"
+			this.menu.appendChild(this.menu.resumegame);
+
+			this.menu.newgame = document.createElement('button');
+			this.menu.newgame.id = 'newgame';
+			this.menu.newgame.classList.add('game-btn');
+			this.menu.newgame.innerHTML = "New Game"
+			this.menu.appendChild(this.menu.newgame);
+			
+			this.menu.newgame.addEventListener('click', function(){
+				$thisGame.newgame();
+			}, false);
+			this.menu.resumegame.addEventListener('click', function(){
+				$thisGame.resume();
+			}, false);
+
+
+			document.querySelector('.cont').appendChild(this.menu);
+			ctx.canvas.classList.add('cnvs_pause');
+
+			this.inited = true;
+		},
+		newgame : function(){
+			this.level = 0;
+			this.score = 0;
+
+			/* Create is new Ship */
+			this.ship = new Ship({
+				color : '#f80',
+				width : 32,
+				height : 28,
+				x : (ctx.canvas.width - 32) / 2,
+				y : ctx.canvas.height - 28,
+				step : ctx.canvas.width * .2
+			});
+
+			/* Create MobsGroup */
+			this.mobsGroup = new MobsGroup();
+
+
+			this.start();
+			this.menu.classList.add('hide');
+			ctx.canvas.classList.remove('cnvs_pause');
+		},
 		start : function(){
 			this.level++;
 
 			/* Write out Level */
 			document.querySelector('.level').innerHTML = this.level;
 
-			mobsGroup.create(this.level);
+			this.mobsGroup.create(this.level);
 
 			this.started = true;
+			this.paused = false;
+		},
+		pause : function(){
+			this.paused = true;
+			this.menu.classList.remove('hide');
+			this.menu.resumegame.classList.remove('hide');
+			ctx.canvas.classList.add('cnvs_pause');
+		},
+		resume : function(){
+			this.paused = false;
+			this.menu.classList.add('hide');
+			ctx.canvas.classList.remove('cnvs_pause');
+		},
+		finish : function(){
+			this.menu.classList.remove('hide');
+			this.menu.resumegame.classList.add('hide');
+			this.started = false;
+			ctx.canvas.classList.add('cnvs_pause');
 		},
 		update : function(){
 			/* Write out Score */
 			document.querySelector('.score').innerHTML = this.score;
 
-			handleCollisions();
-			ship.update(ctx);
-			mobsGroup.update(ctx);
+			this.ship.update(ctx);
+			this.mobsGroup.update(ctx);
 
-			if (!mobsGroup.mobsStack.length) {
-				this.started = false;
+			if (!this.mobsGroup.mobsStack.length) {
+				this.start();
 			};
+			handleCollisions();
 		}
 	};
 	
@@ -108,8 +183,8 @@ onReady(function(){
 	ctx.render = function () {
 		this.clearScene();
 
-		ship.draw(this);
-		mobsGroup.draw(this);
+		game.ship.draw(this);
+		game.mobsGroup.draw(this);
 	};
 
 	/* cxt FPS */
@@ -156,7 +231,11 @@ onReady(function(){
 					vy : -(ctx.canvas.height * 1)
 				}));
 			};
-		}
+		};
+		this.explode = function(ctx){
+			console.log('Ship Explode');
+			game.paused = true;
+		};
 		this.draw = function(ctx) {
 			this.rocketStack.forEach(function(rocket){
 				rocket.draw(ctx);
@@ -182,21 +261,11 @@ onReady(function(){
 			this.rocketStack.forEach(function(rocket){
 				rocket.update(ctx);
 			});
-			this.rocketStack = ship.rocketStack.filter(function(rocket){
+			this.rocketStack = this.rocketStack.filter(function(rocket){
 				return rocket.active;
 			});
 		};
 	};
-
-	/* Create is new Ship */
-	var ship = new Ship({
-		color : '#f80',
-		width : 32,
-		height : 28,
-		x : (ctx.canvas.width - 32) / 2,
-		y : ctx.canvas.height - 28,
-		step : ctx.canvas.width * .2
-	});
 	
 	/* Rocket */
 	var Rocket = function (settings) {
@@ -265,14 +334,13 @@ onReady(function(){
 		this.width = 0;
 		this.height = 0;
 		this.create = function(level){
+			this.mobsStack = [];
 			this.vx = (level == 1) ? ctx.canvas.width * .05 : this.vx + this.vx * .05;
 			this.vy = (level == 1) ? ctx.canvas.height * .05 : this.vy + this.vy * .05;
 			this.width = this.mobsMap[0].length * this.mobWidth + (this.mobsMap[0].length - 1) * this.margin;
 			this.height = this.mobsMap.length * this.mobHeight + (this.mobsMap.length - 1) * this.margin;
 			this.x = (ctx.canvas.width - this.width) / 2;
 			this.y = 40;
-
-			console.log(this.vx, this.vy);
 			for(var i = 0; i < this.mobsMap.length; i++) {
 				var tmp = [];
 				for(var j = 0; j < this.mobsMap[i].length; j++){
@@ -339,9 +407,6 @@ onReady(function(){
 		};
 	};
 
-	/* Create MobsGroup */
-	var mobsGroup = new MobsGroup();
-
 
 	function collides(a, b) {
 		return a.x < b.x + b.width &&
@@ -350,14 +415,20 @@ onReady(function(){
 			a.y + a.height > b.y;
 	}
 	function handleCollisions() {
-		ship.rocketStack.forEach(function(rocket) {
-			mobsGroup.mobsStack.forEach(function(row) {
-				row.forEach(function(mob){
+		game.mobsGroup.mobsStack.forEach(function(row) {
+			row.forEach(function(mob){
+
+				game.ship.rocketStack.forEach(function(rocket) {
 					if (collides(rocket, mob)) {
 						mob.explode();
 						rocket.active = false;
 					}
 				});
+
+				if (collides(game.ship, mob)) {
+					game.ship.explode();
+					game.finish();
+				};
 			});
 		});
 	}
@@ -369,13 +440,32 @@ onReady(function(){
 		document.querySelector('.fps').innerHTML = ctx.getFPS();
 
 		/* Start Game */
-		if (!game.started) {
-			game.start();
+		if (!game.inited) {
+			game.init();
+		};
+
+		if (game.started) {
+			if (keydown.esc) {
+				if(game.escItr) {
+					if (game.paused) {
+						game.resume();
+					}
+					else {
+						game.pause();
+					};
+					game.escItr = false;
+				}
+			}
+			else {
+				game.escItr = true;
+			}
 		};
 
 		/* Update States */
-		game.update();
-		ctx.render();
+		if (game.started && !game.paused) {
+			game.update();
+			ctx.render();
+		};
 		requestAnimFrame(run);
 	})();
 });
