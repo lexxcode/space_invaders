@@ -94,9 +94,11 @@ onReady(function(){
 			
 			this.menu.newgame.addEventListener('click', function(){
 				$thisGame.newgame();
+				this.blur();
 			}, false);
 			this.menu.resumegame.addEventListener('click', function(){
 				$thisGame.resume();
+				this.blur();
 			}, false);
 
 
