@@ -66,15 +66,17 @@ onReady(function(){
 
 	/* Game Config */
 	var game = {
-		level : 1,
+		level : 0,
 		score : 0,
 		started : false,
 		paused : false,
 		start : function(){
+			this.level++;
+
 			/* Write out Level */
 			document.querySelector('.level').innerHTML = this.level;
 
-			mobsGroup.create();
+			mobsGroup.create(this.level);
 
 			this.started = true;
 		},
@@ -85,6 +87,10 @@ onReady(function(){
 			handleCollisions();
 			ship.update(ctx);
 			mobsGroup.update(ctx);
+
+			if (!mobsGroup.mobsStack.length) {
+				this.started = false;
+			};
 		}
 	};
 	
@@ -143,9 +149,9 @@ onReady(function(){
 		this.shoot = function(ctx) {
 			if (this.rocketStack.length < this.maxRocketStack) {
 				this.rocketStack.push(new Rocket({
-					x : this.width / 2 + this.x - 2,
+					x : this.width / 2 + this.x - 2.5,
 					y : this.y,
-					width : 4,
+					width : 5,
 					height : 16,
 					vy : -(ctx.canvas.height * 1)
 				}));
@@ -247,8 +253,8 @@ onReady(function(){
 	/* Mobs Group */
 	var MobsGroup = function(settings) {
 		var settings = settings || {};
-		this.mobWidth = settings.mobWidth || 32;
-		this.mobHeight = settings.mobHeight || 32;
+		this.mobWidth = settings.mobWidth || 24;
+		this.mobHeight = settings.mobHeight || 24;
 		this.margin = settings.margin || 5;
 		this.mobsMap = settings.mobsMap || [[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
 											[2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
@@ -256,16 +262,17 @@ onReady(function(){
 											[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 											[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
 		this.mobsStack = [];
-		this.x = 0;
-		this.y = 40;
 		this.width = 0;
 		this.height = 0;
-		this.create = function(){
-			this.vx = (ctx.canvas.width * 0.05) * game.level;
-			this.vy = (ctx.canvas.height * 0.01) * game.level;
+		this.create = function(level){
+			this.vx = (level == 1) ? ctx.canvas.width * .05 : this.vx + this.vx * .05;
+			this.vy = (level == 1) ? ctx.canvas.height * .05 : this.vy + this.vy * .05;
 			this.width = this.mobsMap[0].length * this.mobWidth + (this.mobsMap[0].length - 1) * this.margin;
 			this.height = this.mobsMap.length * this.mobHeight + (this.mobsMap.length - 1) * this.margin;
 			this.x = (ctx.canvas.width - this.width) / 2;
+			this.y = 40;
+
+			console.log(this.vx, this.vy);
 			for(var i = 0; i < this.mobsMap.length; i++) {
 				var tmp = [];
 				for(var j = 0; j < this.mobsMap[i].length; j++){
