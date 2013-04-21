@@ -393,6 +393,11 @@ onReady(function(){
 			else {
 				this.x = tmpX;
 			};
+			if (game.ship.y < (this.y + this.height)) {
+				this.y -= ((this.y + this.height) - game.ship.y);
+				game.ship.explode();
+				game.finish();
+			};
 			for (var i = 0; i < this.mobsStack.length; i++) {
 				for (var j = 0; j < this.mobsStack[i].length; j++) {
 					this.mobsStack[i][j].x += (this.x - oldX);
@@ -426,11 +431,6 @@ onReady(function(){
 						rocket.active = false;
 					}
 				});
-
-				if (collides(game.ship, mob)) {
-					game.ship.explode();
-					game.finish();
-				};
 			});
 		});
 	}
