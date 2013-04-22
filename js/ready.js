@@ -62,9 +62,6 @@ onReady(function(){
 			game.pause();
 		};
 	}, false);
-	window.addEventListener('focus', function() {
-		// console.log('window focused!');
-	}, false);
 
 	/* Game Config */
 	var game = {
@@ -124,6 +121,46 @@ onReady(function(){
 			/* Create MobsGroup */
 			this.mobsGroup = new MobsGroup();
 
+			/* Create UFO */
+			this.ufo = new Mob({
+				color : '#d50',
+				width : 48,
+				height : 24,
+				x : -48,
+				y : 10,
+				type : 10
+			});
+			this.ufo.vx = 0;
+			this.ufo.chance = 0.05;
+			this.ufo.explode = function(ctx) {
+				game.score += 500;
+				if (this.vx > 0) {
+					this.x = ctx.canvas.width;
+				}
+				else {
+					this.x = -this.width;
+				};
+			};
+			this.ufo.update = function(ctx){
+				if (!this.vx && Math.random() < (this.chance / ctx.FPS)) {
+					if (this.x < 0) {
+						this.vx = 100;
+					}
+					else {
+						this.vx = -100;
+					};
+				}
+				else if(this.vx > 0 && this.x > ctx.canvas.width){
+					this.vx = 0;
+					this.x = ctx.canvas.width;
+				}
+				else if(this.vx < 0 && this.x < -this.width){
+					this.vx = 0;
+					this.x = -this.width;
+				}
+				this.x += (ctx.diffFrameTick / 1000) * this.vx;
+			};
+
 
 			this.start();
 			this.menu.classList.add('hide');
@@ -163,11 +200,17 @@ onReady(function(){
 
 			this.ship.update(ctx);
 			this.mobsGroup.update(ctx);
+			this.ufo.update(ctx);
 
 			if (!this.mobsGroup.mobsStack.length) {
 				this.start();
 			};
-			handleCollisions();
+		},
+		collides : function(a, b) {
+			return a.x < b.x + b.width &&
+				a.x + a.width > b.x &&
+				a.y < b.y + b.height &&
+				a.y + a.height > b.y;
 		}
 	};
 	
@@ -187,6 +230,7 @@ onReady(function(){
 
 		game.ship.draw(this);
 		game.mobsGroup.draw(this);
+		game.ufo.draw(this);
 	};
 
 	/* cxt FPS */
@@ -290,6 +334,20 @@ onReady(function(){
 		this.update = function(ctx){
 			this.x += (ctx.diffFrameTick / 1000) * this.vx;
 			this.y += (ctx.diffFrameTick / 1000) * this.vy;
+
+			$this = this;
+			game.mobsGroup.mobsStack.forEach(function(row) {
+				row.forEach(function(mob){
+					if (game.collides($this, mob)) {
+						mob.explode();
+						$this.active = false;
+					}
+				});
+			});
+			if (game.collides($this, game.ufo)) {
+				game.ufo.explode(ctx);
+				$this.active = false;
+			}
 			this.active = this.active && this.inScene(ctx);
 		};
 	};
@@ -309,7 +367,9 @@ onReady(function(){
 					this.y >= 0 && (this.y + this.height) <= ctx.canvas.height;
 		};
 		this.explode = function(ctx) {
-			game.score += 10 * this.type;
+			if (this.active) {
+				game.score += 10 * this.type;
+			};
 			this.active = false;
 		};
 		this.draw = function(ctx){
@@ -361,12 +421,14 @@ onReady(function(){
 			var $this = this;
 			$this.x = Infinity;
 			$this.width = 0;
+			$this.height = 0;
 			for (var i = 0; i < this.mobsStack.length; i++) {
 				this.mobsStack[i] = this.mobsStack[i].filter(function(mob){
 					if (mob.active) {
 						mob.update(ctx);
 						$this.x = Math.min($this.x, mob.x);
 						$this.width = Math.max($this.width, mob.x + mob.width);
+						$this.height = Math.max($this.height, mob.y + mob.height);
 					}
 					return mob.active;
 				});
@@ -377,6 +439,7 @@ onReady(function(){
 			var oldX = this.x,
 				oldY = this.y;
 			this.width -= this.x;
+			this.height -= this.y;
 
 			var tmpX = this.x + (ctx.diffFrameTick / 1000) * this.vx;
 			
@@ -413,27 +476,6 @@ onReady(function(){
 			};
 		};
 	};
-
-
-	function collides(a, b) {
-		return a.x < b.x + b.width &&
-			a.x + a.width > b.x &&
-			a.y < b.y + b.height &&
-			a.y + a.height > b.y;
-	}
-	function handleCollisions() {
-		game.mobsGroup.mobsStack.forEach(function(row) {
-			row.forEach(function(mob){
-
-				game.ship.rocketStack.forEach(function(rocket) {
-					if (collides(rocket, mob)) {
-						mob.explode();
-						rocket.active = false;
-					}
-				});
-			});
-		});
-	}
 	
 
 	/* Main function of Game */
