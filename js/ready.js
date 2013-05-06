@@ -110,6 +110,9 @@ onReady(function(){
 			this.score = 0;
 			this.lives = 3;
 
+			/* Reset RocketStack */
+			Rocket.rocketStack = [];
+
 			/* Create is new Ship */
 			this.ship = new Ship({
 				color : '#f80',
@@ -174,6 +177,9 @@ onReady(function(){
 			/* Write out info */
 			document.querySelector('.level').innerHTML = this.level;
 
+			/* Reset RocketStack */
+			Rocket.rocketStack = [];
+
 			this.mobsGroup.create(this.level);
 
 			this.started = true;
@@ -203,6 +209,7 @@ onReady(function(){
 			this.ship.update(ctx);
 			this.mobsGroup.update(ctx);
 			this.ufo.update(ctx);
+			Rocket.update(ctx);
 
 			if (!this.mobsGroup.mobsStack.length) {
 				this.start();
@@ -230,6 +237,7 @@ onReady(function(){
 	ctx.render = function () {
 		this.clearScene();
 
+		Rocket.draw(this);
 		game.ship.draw(this);
 		game.mobsGroup.draw(this);
 		game.ufo.draw(this);
@@ -269,17 +277,22 @@ onReady(function(){
 		this.step = settings.step || 20;
 		this.lives = settings.lives || 3;
 		this.maxRocketStack = settings.maxRocketStack || 1;
-		this.rocketStack = [];
+		this.rocketCount = 0;
 		this.shoot = function(ctx) {
-			if (this.rocketStack.length < this.maxRocketStack) {
-				this.rocketStack.push(new Rocket({
+			var $this = this;
+			if (this.rocketCount < this.maxRocketStack) {
+				Rocket.rocketStack.push(new Rocket({
 					x : this.width / 2 + this.x - 2.5,
 					y : this.y,
 					width : 5,
 					height : 16,
 					vy : -(ctx.canvas.height * 1),
-					aims : ['mob', 'ufo']
+					aims : ['mob', 'ufo'],
+					complete : function(){
+						$this.rocketCount--;
+					}
 				}));
+				this.rocketCount++;
 			};
 		};
 		this.explode = function(ctx){
@@ -287,9 +300,6 @@ onReady(function(){
 			this.lives--;
 		};
 		this.draw = function(ctx) {
-			this.rocketStack.forEach(function(rocket){
-				rocket.draw(ctx);
-			});
 			ctx.fillStyle = this.color;
 			ctx.fillRect(this.x, this.y, this.width, this.height);
 		};
@@ -307,13 +317,6 @@ onReady(function(){
 			if (keydown.space) {
 				this.shoot(ctx);
 			}
-
-			this.rocketStack.forEach(function(rocket){
-				rocket.update(ctx);
-			});
-			this.rocketStack = this.rocketStack.filter(function(rocket){
-				return rocket.active;
-			});
 
 			document.querySelector('.lives').innerHTML = this.lives;
 			if (!this.lives) {
@@ -333,6 +336,7 @@ onReady(function(){
 		this.vx = settings.vx || 0;
 		this.vy = settings.vy || 0;
 		this.aims = settings.aims || [];
+		this.complete = settings.complete || function(){};
 		this.inScene = function(ctx) {
 			return this.x >= 0 && (this.x + this.width) <= ctx.canvas.width &&
 					this.y >= 0 && (this.y + this.height) <= ctx.canvas.height;
@@ -345,7 +349,7 @@ onReady(function(){
 			this.x += (ctx.diffFrameTick / 1000) * this.vx;
 			this.y += (ctx.diffFrameTick / 1000) * this.vy;
 
-			$this = this;
+			var $this = this;
 			if (this.aims.indexOf('mob') != -1) {
 				game.mobsGroup.mobsStack.forEach(function(row) {
 					row.forEach(function(mob){
@@ -369,7 +373,22 @@ onReady(function(){
 				}
 			}
 			this.active = this.active && this.inScene(ctx);
+			if (!this.active) {
+				this.complete();
+			};
 		};
+	};
+	Rocket.rocketStack = [];
+	Rocket.update = function(ctx) {
+		this.rocketStack = this.rocketStack.filter(function(rocket){
+			rocket.update(ctx);
+			return rocket.active;
+		});
+	};
+	Rocket.draw = function(ctx) {
+		this.rocketStack.forEach(function(rocket){
+			rocket.draw(ctx);
+		});
 	};
 
 	/* Mob */
@@ -383,17 +402,22 @@ onReady(function(){
 		
 		this.type = settings.type || 1;
 		this.maxRocketStack = settings.maxRocketStack || 1;
-		this.rocketStack = [];
+		this.rocketCount = 0;
 		this.shoot = function(ctx) {
-			if (this.rocketStack.length < this.maxRocketStack) {
-				this.rocketStack.push(new Rocket({
+			var $this = this;
+			if (this.rocketCount < this.maxRocketStack) {
+				Rocket.rocketStack.push(new Rocket({
 					x : this.width / 2 + this.x - 2.5,
 					y : this.y + this.height,
 					width : 5,
 					height : 16,
 					vy : ctx.canvas.height * 1,
-					aims : ['ship']
+					aims : ['ship'],
+					complete : function(){
+						$this.rocketCount--;
+					}
 				}));
+				this.rocketCount++;
 			};
 		};
 		this.inScene = function(ctx) {
@@ -407,20 +431,20 @@ onReady(function(){
 			this.active = false;
 		};
 		this.draw = function(ctx){
-			this.rocketStack.forEach(function(rocket){
+			/*this.rocketStack.forEach(function(rocket){
 				rocket.draw(ctx);
-			});
+			});*/
 			ctx.fillStyle = this.color;
 			ctx.fillRect(this.x, this.y, this.width, this.height);
 		};
 		this.update = function(ctx){
 			this.active = this.active;
-			this.rocketStack.forEach(function(rocket){
+			/*this.rocketStack.forEach(function(rocket){
 				rocket.update(ctx);
 			});
 			this.rocketStack = this.rocketStack.filter(function(rocket){
 				return rocket.active;
-			});
+			});*/
 		};
 	};
 
@@ -463,6 +487,7 @@ onReady(function(){
 		};
 		this.randShoot = function(ctx){
 			var h = this.mobsStack.length;
+			this.mobsStack[h-1][0].color = '#088';
 			this.mobsStack[h-1][0].shoot(ctx);
 			console.log('shoot');
 		};
