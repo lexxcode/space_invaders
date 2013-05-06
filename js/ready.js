@@ -67,6 +67,7 @@ onReady(function(){
 	var game = {
 		level : 0,
 		score : 0,
+		lives : 0,
 		inited : false,
 		started : false,
 		paused : false,
@@ -107,6 +108,7 @@ onReady(function(){
 		newgame : function(){
 			this.level = 0;
 			this.score = 0;
+			this.lives = 3;
 
 			/* Create is new Ship */
 			this.ship = new Ship({
@@ -169,7 +171,7 @@ onReady(function(){
 		start : function(){
 			this.level++;
 
-			/* Write out Level */
+			/* Write out info */
 			document.querySelector('.level').innerHTML = this.level;
 
 			this.mobsGroup.create(this.level);
@@ -265,6 +267,7 @@ onReady(function(){
 		this.width = settings.width || 28;
 		this.height = settings.height || 28;
 		this.step = settings.step || 20;
+		this.lives = settings.lives || 3;
 		this.maxRocketStack = settings.maxRocketStack || 1;
 		this.rocketStack = [];
 		this.shoot = function(ctx) {
@@ -274,13 +277,14 @@ onReady(function(){
 					y : this.y,
 					width : 5,
 					height : 16,
-					vy : -(ctx.canvas.height * 1)
+					vy : -(ctx.canvas.height * 1),
+					aims : ['mob', 'ufo']
 				}));
 			};
 		};
 		this.explode = function(ctx){
 			console.log('Ship Explode');
-			game.paused = true;
+			this.lives--;
 		};
 		this.draw = function(ctx) {
 			this.rocketStack.forEach(function(rocket){
@@ -310,6 +314,11 @@ onReady(function(){
 			this.rocketStack = this.rocketStack.filter(function(rocket){
 				return rocket.active;
 			});
+
+			document.querySelector('.lives').innerHTML = this.lives;
+			if (!this.lives) {
+				game.finish();
+			};
 		};
 	};
 	
@@ -323,6 +332,7 @@ onReady(function(){
 		this.y = settings.y || 0,
 		this.vx = settings.vx || 0;
 		this.vy = settings.vy || 0;
+		this.aims = settings.aims || [];
 		this.inScene = function(ctx) {
 			return this.x >= 0 && (this.x + this.width) <= ctx.canvas.width &&
 					this.y >= 0 && (this.y + this.height) <= ctx.canvas.height;
@@ -336,17 +346,27 @@ onReady(function(){
 			this.y += (ctx.diffFrameTick / 1000) * this.vy;
 
 			$this = this;
-			game.mobsGroup.mobsStack.forEach(function(row) {
-				row.forEach(function(mob){
-					if (game.collides($this, mob)) {
-						mob.explode();
-						$this.active = false;
-					}
+			if (this.aims.indexOf('mob') != -1) {
+				game.mobsGroup.mobsStack.forEach(function(row) {
+					row.forEach(function(mob){
+						if (game.collides($this, mob)) {
+							mob.explode();
+							$this.active = false;
+						}
+					});
 				});
-			});
-			if (game.collides($this, game.ufo)) {
-				game.ufo.explode(ctx);
-				$this.active = false;
+			};
+			if (this.aims.indexOf('ufo') != -1) {
+				if (game.collides($this, game.ufo)) {
+					game.ufo.explode(ctx);
+					$this.active = false;
+				}
+			};
+			if (this.aims.indexOf('ship') != -1) {
+				if (game.collides($this, game.ship)) {
+					game.ship.explode(ctx);
+					$this.active = false;
+				}
 			}
 			this.active = this.active && this.inScene(ctx);
 		};
@@ -362,6 +382,20 @@ onReady(function(){
 		this.y = settings.y || 0;
 		
 		this.type = settings.type || 1;
+		this.maxRocketStack = settings.maxRocketStack || 1;
+		this.rocketStack = [];
+		this.shoot = function(ctx) {
+			if (this.rocketStack.length < this.maxRocketStack) {
+				this.rocketStack.push(new Rocket({
+					x : this.width / 2 + this.x - 2.5,
+					y : this.y + this.height,
+					width : 5,
+					height : 16,
+					vy : ctx.canvas.height * 1,
+					aims : ['ship']
+				}));
+			};
+		};
 		this.inScene = function(ctx) {
 			return this.x >= 0 && (this.x + this.width) <= ctx.canvas.width &&
 					this.y >= 0 && (this.y + this.height) <= ctx.canvas.height;
@@ -373,11 +407,20 @@ onReady(function(){
 			this.active = false;
 		};
 		this.draw = function(ctx){
+			this.rocketStack.forEach(function(rocket){
+				rocket.draw(ctx);
+			});
 			ctx.fillStyle = this.color;
 			ctx.fillRect(this.x, this.y, this.width, this.height);
 		};
 		this.update = function(ctx){
 			this.active = this.active;
+			this.rocketStack.forEach(function(rocket){
+				rocket.update(ctx);
+			});
+			this.rocketStack = this.rocketStack.filter(function(rocket){
+				return rocket.active;
+			});
 		};
 	};
 
@@ -395,6 +438,7 @@ onReady(function(){
 		this.mobsStack = [];
 		this.width = 0;
 		this.height = 0;
+		this.shootChance = settings.shootChance || 0.25;
 		this.create = function(level){
 			this.mobsStack = [];
 			this.vx = (level == 1) ? ctx.canvas.width * .05 : this.vx + this.vx * .05;
@@ -416,6 +460,11 @@ onReady(function(){
 				}
 				this.mobsStack.push(tmp);
 			};
+		};
+		this.randShoot = function(ctx){
+			var h = this.mobsStack.length;
+			this.mobsStack[h-1][0].shoot(ctx);
+			console.log('shoot');
 		};
 		this.update = function(ctx){
 			var $this = this;
@@ -466,6 +515,9 @@ onReady(function(){
 					this.mobsStack[i][j].x += (this.x - oldX);
 					this.mobsStack[i][j].y += (this.y - oldY);
 				};
+			};
+			if (Math.random() < (this.shootChance / ctx.FPS)) {
+				this.randShoot(ctx);
 			};
 		};
 		this.draw = function(ctx){
