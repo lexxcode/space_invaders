@@ -12,7 +12,6 @@ const game = new Game(renderer, hud);
 
 function loop(): void {
   renderer.tick();
-  hud.setFps(renderer.fps);
   game.frame();
   requestAnimationFrame(loop);
 }

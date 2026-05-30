@@ -11,6 +11,15 @@ import { Hud } from './hud';
 import { initInput, keys } from './input';
 import { Renderer } from './Renderer';
 
+interface MenuButton {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label: string;
+  action: () => void;
+}
+
 export class Game {
   readonly renderer: Renderer;
   readonly hud: Hud;
@@ -35,58 +44,30 @@ export class Game {
   /** Debounces the Esc key so one press toggles pause exactly once. */
   private escLatch = true;
 
-  private menu!: HTMLDivElement;
-  private banner!: HTMLDivElement;
-  private resumeBtn!: HTMLButtonElement;
-  private newGameBtn!: HTMLButtonElement;
+  /** Canvas-drawn menu buttons, rebuilt each frame the menu is visible. */
+  private menuButtons: MenuButton[] = [];
+  private hoverIndex = -1;
 
   constructor(renderer: Renderer, hud: Hud) {
     this.renderer = renderer;
     this.hud = hud;
     this.hiScore = this.loadHiScore();
-    this.hud.setHiScore(this.hiScore);
-    this.hud.setMuted(audio.muted);
     initInput({
       onBlur: () => {
         if (this.started) this.pause();
       },
       onMute: () => {
-        this.hud.setMuted(audio.toggleMute());
+        audio.toggleMute();
       },
     });
   }
 
-  /** Build the menu overlay once, before the first game starts. */
+  /** Wire up canvas pointer handling once, before the first frame. */
   init(): void {
-    this.menu = document.createElement('div');
-    this.menu.classList.add('gameMenu');
-
-    this.banner = document.createElement('div');
-    this.banner.classList.add('gameBanner', 'hide');
-    this.menu.appendChild(this.banner);
-
-    this.resumeBtn = this.createButton('resumegame', 'Resume', () => this.resume());
-    this.resumeBtn.classList.add('hide');
-    this.menu.appendChild(this.resumeBtn);
-
-    this.newGameBtn = this.createButton('newgame', 'New Game', () => this.newGame());
-    this.menu.appendChild(this.newGameBtn);
-
-    this.renderer.canvas.parentElement?.appendChild(this.menu);
-    this.renderer.setPaused(true);
+    const canvas = this.renderer.canvas;
+    canvas.addEventListener('click', (e) => this.onClick(e));
+    canvas.addEventListener('mousemove', (e) => this.onMove(e));
     this.inited = true;
-  }
-
-  private createButton(id: string, label: string, onClick: () => void): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.id = id;
-    btn.classList.add('game-btn');
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-      onClick();
-      btn.blur();
-    });
-    return btn;
   }
 
   newGame(): void {
@@ -103,11 +84,6 @@ export class Game {
     this.ufo = new Ufo();
 
     this.start();
-    this.banner.classList.add('hide');
-    this.menu.classList.add('hide');
-    this.renderer.setPaused(false);
-    this.hud.setScore(this.score);
-    this.hud.setLives(this.ship.lives);
   }
 
   private createBunkers(): Bunker[] {
@@ -120,7 +96,6 @@ export class Game {
 
   start(): void {
     this.level++;
-    this.hud.setLevel(this.level);
     this.rockets.reset();
     // reset() drops in-flight rockets without firing their onComplete, so the
     // ship's rocket counter must be cleared too or it could stay maxed out.
@@ -133,15 +108,10 @@ export class Game {
 
   pause(): void {
     this.paused = true;
-    this.menu.classList.remove('hide');
-    this.resumeBtn.classList.remove('hide');
-    this.renderer.setPaused(true);
   }
 
   resume(): void {
     this.paused = false;
-    this.menu.classList.add('hide');
-    this.renderer.setPaused(false);
   }
 
   /** Begin the player death sequence (freeze + explosion). */
@@ -156,11 +126,6 @@ export class Game {
     this.started = false;
     this.gameover = true;
     this.saveHiScore();
-    this.banner.textContent = `Game Over — Score: ${this.score}`;
-    this.banner.classList.remove('hide');
-    this.resumeBtn.classList.add('hide');
-    this.menu.classList.remove('hide');
-    this.renderer.setPaused(true);
   }
 
   update(): void {
@@ -169,7 +134,6 @@ export class Game {
       this.shipDeadTimer -= this.renderer.dt;
       if (this.shipDeadTimer <= 0) {
         this.ship.lives--;
-        this.hud.setLives(this.ship.lives);
         if (this.ship.lives <= 0) {
           this.gameOver();
         } else {
@@ -187,22 +151,37 @@ export class Game {
     this.ufo.update(this);
     this.rockets.update(this);
 
-    if (this.score > this.hiScore) {
-      this.hiScore = this.score;
-      this.hud.setHiScore(this.hiScore);
-    }
-    this.hud.setScore(this.score);
-
+    if (this.score > this.hiScore) this.hiScore = this.score;
     if (!this.mobsGroup.mobsStack.length) this.start();
   }
 
   render(): void {
-    this.renderer.clear();
-    for (const bunker of this.bunkers) bunker.draw(this.renderer);
-    this.rockets.draw(this.renderer);
-    this.ship.draw(this.renderer);
-    this.mobsGroup.draw(this.renderer);
-    this.ufo.draw(this.renderer);
+    const r = this.renderer;
+    r.clear();
+    if (this.ship) this.drawScene();
+
+    const showMenu = !this.started || this.paused;
+    if (showMenu) r.fillRect(0, 0, r.canvas.width, r.canvas.height, 'rgba(0, 0, 0, 0.66)');
+
+    this.hud.draw(r, {
+      fps: r.fps,
+      score: this.score,
+      hiScore: this.hiScore,
+      level: this.level,
+      muted: audio.muted,
+    });
+
+    this.menuButtons = [];
+    if (showMenu) this.drawMenu();
+  }
+
+  private drawScene(): void {
+    const r = this.renderer;
+    for (const bunker of this.bunkers) bunker.draw(r);
+    this.rockets.draw(r);
+    this.ship.draw(r);
+    this.mobsGroup.draw(r);
+    this.ufo.draw(r);
     this.drawLives();
   }
 
@@ -214,6 +193,90 @@ export class Game {
     for (let i = 0; i < this.ship.lives; i++) {
       this.renderer.drawSprite(SHIP_SPRITE, 8 + i * (iconW + 8), y, SCALE.life, COLORS.ship);
     }
+  }
+
+  private drawMenu(): void {
+    const r = this.renderer;
+    const cw = r.canvas.width;
+    const cy = r.canvas.height / 2;
+
+    if (this.gameover) {
+      r.drawText('GAME OVER', cw / 2, cy - 120, { size: 48, align: 'center', baseline: 'middle' });
+      r.drawText(`SCORE ${this.score}    HI ${this.hiScore}`, cw / 2, cy - 74, {
+        size: 20,
+        align: 'center',
+        baseline: 'middle',
+        color: '#bbb',
+        weight: 'normal',
+      });
+    } else if (!this.started) {
+      r.drawText('SPACE INVADERS', cw / 2, cy - 120, {
+        size: 44,
+        align: 'center',
+        baseline: 'middle',
+        color: COLORS.ship,
+      });
+    } else {
+      r.drawText('PAUSED', cw / 2, cy - 120, { size: 44, align: 'center', baseline: 'middle' });
+    }
+
+    const items: { label: string; action: () => void }[] = [];
+    if (this.started && this.paused) items.push({ label: 'Resume', action: () => this.resume() });
+    items.push({ label: this.gameover ? 'Restart' : 'New Game', action: () => this.newGame() });
+
+    const bw = 260;
+    const bh = 56;
+    const gap = 18;
+    const top = cy - 24;
+    this.menuButtons = items.map((it, i) => ({
+      x: (cw - bw) / 2,
+      y: top + i * (bh + gap),
+      w: bw,
+      h: bh,
+      label: it.label,
+      action: it.action,
+    }));
+
+    this.menuButtons.forEach((b, i) => {
+      r.fillRect(b.x, b.y, b.w, b.h, i === this.hoverIndex ? '#ff3b25' : '#cf0404');
+      r.strokeRect(b.x, b.y, b.w, b.h, '#900', 2);
+      r.drawText(b.label, b.x + b.w / 2, b.y + b.h / 2, {
+        size: 24,
+        align: 'center',
+        baseline: 'middle',
+        color: '#000',
+      });
+    });
+  }
+
+  /** Convert a pointer event to canvas-space coordinates (canvas is scaled by CSS). */
+  private pointer(e: MouseEvent): { x: number; y: number } {
+    const canvas = this.renderer.canvas;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  }
+
+  private static inside(b: MenuButton, p: { x: number; y: number }): boolean {
+    return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+  }
+
+  private onClick(e: MouseEvent): void {
+    const p = this.pointer(e);
+    for (const b of this.menuButtons) {
+      if (Game.inside(b, p)) {
+        b.action();
+        return;
+      }
+    }
+  }
+
+  private onMove(e: MouseEvent): void {
+    const p = this.pointer(e);
+    this.hoverIndex = this.menuButtons.findIndex((b) => Game.inside(b, p));
+    this.renderer.canvas.style.cursor = this.hoverIndex >= 0 ? 'pointer' : 'default';
   }
 
   private clearAlienBullets(): void {
@@ -236,10 +299,8 @@ export class Game {
       }
     }
 
-    if (this.started && !this.paused) {
-      this.update();
-      this.render();
-    }
+    if (this.started && !this.paused) this.update();
+    this.render();
   }
 
   collides(a: Entity, b: Entity): boolean {
@@ -256,7 +317,6 @@ export class Game {
 
   private saveHiScore(): void {
     this.hiScore = Math.max(this.hiScore, this.score);
-    this.hud.setHiScore(this.hiScore);
     try {
       localStorage.setItem(STORAGE_KEY, String(this.hiScore));
     } catch {

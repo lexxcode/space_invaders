@@ -64,7 +64,34 @@ export class Renderer {
     }
   }
 
-  setPaused(paused: boolean): void {
-    this.canvas.classList.toggle('cnvs_pause', paused);
+  strokeRect(x: number, y: number, width: number, height: number, color: string, lineWidth = 2): void {
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = lineWidth;
+    this.ctx.strokeRect(x, y, width, height);
   }
+
+  drawText(text: string, x: number, y: number, opts: TextOptions = {}): void {
+    const {
+      size = 16,
+      color = '#fff',
+      align = 'left',
+      baseline = 'alphabetic',
+      font = "'Courier New', monospace",
+      weight = 'bold',
+    } = opts;
+    this.ctx.fillStyle = color;
+    this.ctx.font = `${weight} ${size}px ${font}`;
+    this.ctx.textAlign = align;
+    this.ctx.textBaseline = baseline;
+    this.ctx.fillText(text, x, y);
+  }
+}
+
+export interface TextOptions {
+  size?: number;
+  color?: string;
+  align?: CanvasTextAlign;
+  baseline?: CanvasTextBaseline;
+  font?: string;
+  weight?: string;
 }

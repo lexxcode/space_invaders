@@ -157,7 +157,7 @@ export const GROUP = {
   /** Speed bump applied on every new level. */
   levelSpeedup: 0.12,
   /** Y of the top row on level 1; pushed down a bit each level. */
-  startY: 70,
+  startY: 100,
   levelDescent: 18,
   /** Speed multiplier when only one alien is left (scales linearly from 1). */
   maxSpeedMultiplier: 5,
@@ -177,7 +177,7 @@ export const ALIEN_FIRE = {
 export const UFO = {
   width: 48,
   height: 21,
-  y: 16,
+  y: 40,
   /** Per-frame spawn chance (divided by FPS). */
   chance: 0.04,
   speed: 130,
