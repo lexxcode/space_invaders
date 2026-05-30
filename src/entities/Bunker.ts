@@ -1,6 +1,7 @@
 import type { Renderer } from '../core/Renderer';
 import type { Entity } from '../types';
 import { BUNKER, COLORS, SCALE } from '../config';
+import { intersects } from '../core/collision';
 
 /** A destructible shield. Stored as a boolean cell grid that gets chipped
  *  away wherever a rocket (or a descending alien) makes contact. */
@@ -45,12 +46,7 @@ export class Bunker {
   }
 
   collides(e: Entity): boolean {
-    return (
-      e.x < this.x + this.width &&
-      e.x + e.width > this.x &&
-      e.y < this.y + this.height &&
-      e.y + e.height > this.y
-    );
+    return intersects(e, this);
   }
 
   /** If a rocket touches solid material, erase a blast around the contact

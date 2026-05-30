@@ -1,5 +1,6 @@
 import { BUNKER, COLORS, SCALE, SHIP, SHIP_SPRITE, STORAGE_KEY } from '../config';
 import type { Entity } from '../types';
+import { intersects } from './collision';
 import { Bunker } from '../entities/Bunker';
 import { MobsGroup } from '../entities/MobsGroup';
 import { RocketManager } from '../entities/Rocket';
@@ -100,7 +101,6 @@ export class Game {
     this.ship.reset(this.renderer);
     this.mobsGroup = new MobsGroup();
     this.ufo = new Ufo();
-    this.bunkers = this.createBunkers();
 
     this.start();
     this.banner.classList.add('hide');
@@ -122,6 +122,10 @@ export class Game {
     this.level++;
     this.hud.setLevel(this.level);
     this.rockets.reset();
+    // reset() drops in-flight rockets without firing their onComplete, so the
+    // ship's rocket counter must be cleared too or it could stay maxed out.
+    this.ship.rocketCount = 0;
+    this.bunkers = this.createBunkers();
     this.mobsGroup.create(this.level, this.renderer);
     this.started = true;
     this.paused = false;
@@ -239,12 +243,7 @@ export class Game {
   }
 
   collides(a: Entity, b: Entity): boolean {
-    return (
-      a.x < b.x + b.width &&
-      a.x + a.width > b.x &&
-      a.y < b.y + b.height &&
-      a.y + a.height > b.y
-    );
+    return intersects(a, b);
   }
 
   private loadHiScore(): number {
