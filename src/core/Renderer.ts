@@ -295,17 +295,22 @@ export class Renderer {
     const ctx = this.textCtx;
     const fontSpec = `${weight} ${size}px ${font}`;
     ctx.font = fontSpec;
-    const w = Math.max(1, Math.ceil(ctx.measureText(text).width));
-    const h = Math.ceil(size * 1.4);
+    const metrics = ctx.measureText(text);
+    const ascent = Math.ceil(metrics.actualBoundingBoxAscent || size * 0.8);
+    const descent = Math.ceil(metrics.actualBoundingBoxDescent || size * 0.2);
+    // Tightly fit the glyphs with a symmetric 1px pad so the texture's centre
+    // matches the text's centre (needed for correct 'middle' alignment).
+    const w = Math.max(1, Math.ceil(metrics.width) + 2);
+    const h = Math.max(1, ascent + descent + 2);
 
     this.textCanvas.width = w;
     this.textCanvas.height = h;
     ctx.font = fontSpec; // resizing the canvas resets the context
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'alphabetic';
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = color;
-    ctx.fillText(text, 0, 0);
+    ctx.fillText(text, 1, ascent + 1);
 
     const gl = this.gl;
     const tex = gl.createTexture();
