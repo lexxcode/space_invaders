@@ -15,9 +15,20 @@ const CODE_MAP: Record<string, keyof KeyState> = {
   Escape: 'esc',
 };
 
-/** Bind keyboard/blur listeners. `onBlur` lets the game pause when it loses focus. */
-export function initInput(onBlur: () => void): void {
+export interface InputHandlers {
+  /** Fired when the window loses focus (used to auto-pause). */
+  onBlur: () => void;
+  /** Fired once per press of the mute key. */
+  onMute: () => void;
+}
+
+/** Bind keyboard/blur listeners. */
+export function initInput({ onBlur, onMute }: InputHandlers): void {
   document.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyM' && !e.repeat) {
+      onMute();
+      return;
+    }
     const key = CODE_MAP[e.code];
     if (key) keys[key] = true;
   });

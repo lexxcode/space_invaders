@@ -70,6 +70,14 @@ body {
   text-align: center;
 }
 
+.gameBanner {
+  margin-bottom: 24px;
+  font-size: 2rem;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(255, 59, 37, 0.9);
+}
+
 .game-btn {
   min-width: 250px;
   padding: 10px 20px;

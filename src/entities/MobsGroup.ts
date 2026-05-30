@@ -1,24 +1,25 @@
 import type { Game } from '../core/Game';
 import type { Renderer } from '../core/Renderer';
-import { COLORS, GROUP, MOB, MOBS_MAP } from '../config';
+import { ALIEN_FIRE, COLORS, GROUP, MOB, MOBS_MAP, ROCKET } from '../config';
+import { audio } from '../core/audio';
 import { Mob } from './Mob';
+import { Rocket } from './Rocket';
 
 export interface MobsGroupOptions {
   mobWidth?: number;
   mobHeight?: number;
   margin?: number;
   mobsMap?: number[][];
-  shootChance?: number;
 }
 
-/** The grid of mobs: spawns the formation, marches it back and forth and
- *  down, lets the front row shoot, and ends the game on contact with the ship. */
+/** The grid of aliens: spawns the formation, marches it (accelerating as
+ *  members die), animates the two-frame walk, fires from random columns and
+ *  ends the game on contact with the ship. */
 export class MobsGroup {
   readonly mobWidth: number;
   readonly mobHeight: number;
   readonly margin: number;
   readonly mobsMap: number[][];
-  readonly shootChance: number;
 
   mobsStack: Mob[][] = [];
   x = 0;
@@ -28,23 +29,34 @@ export class MobsGroup {
   vx = 0;
   vy = 0;
 
+  private initialCount = 1;
+  frame = 0;
+  private frameTimer = 0;
+  private fireTimer = 0;
+
   constructor(options: MobsGroupOptions = {}) {
     this.mobWidth = options.mobWidth ?? MOB.width;
     this.mobHeight = options.mobHeight ?? MOB.height;
     this.margin = options.margin ?? MOB.margin;
     this.mobsMap = options.mobsMap ?? MOBS_MAP;
-    this.shootChance = options.shootChance ?? GROUP.shootChance;
+  }
+
+  get count(): number {
+    return this.mobsStack.reduce((n, row) => n + row.length, 0);
   }
 
   create(level: number, renderer: Renderer): void {
     const { canvas } = renderer;
     this.mobsStack = [];
-    this.vx = level === 1 ? canvas.width * GROUP.vxFactor : this.vx + this.vx * GROUP.levelSpeedup;
-    this.vy = level === 1 ? canvas.height * GROUP.vyFactor : this.vy + this.vy * GROUP.levelSpeedup;
-    this.width = this.mobsMap[0].length * this.mobWidth + (this.mobsMap[0].length - 1) * this.margin;
-    this.height = this.mobsMap.length * this.mobHeight + (this.mobsMap.length - 1) * this.margin;
+    const pitchX = this.mobWidth + this.margin;
+    const pitchY = this.mobHeight + this.margin;
+
+    this.vx = canvas.width * GROUP.vxFactor * (1 + (level - 1) * GROUP.levelSpeedup);
+    this.vy = GROUP.descend;
+    this.width = this.mobsMap[0].length * pitchX - this.margin;
+    this.height = this.mobsMap.length * pitchY - this.margin;
     this.x = (canvas.width - this.width) / 2;
-    this.y = GROUP.startY;
+    this.y = GROUP.startY + (level - 1) * GROUP.levelDescent;
 
     for (let i = 0; i < this.mobsMap.length; i++) {
       const row: Mob[] = [];
@@ -53,21 +65,60 @@ export class MobsGroup {
           new Mob({
             width: this.mobWidth,
             height: this.mobHeight,
-            x: (this.mobWidth + this.margin) * j + this.x,
-            y: (this.mobHeight + this.margin) * i + this.y,
+            x: pitchX * j + this.x,
+            y: pitchY * i + this.y,
             type: this.mobsMap[i][j],
           }),
         );
       }
       this.mobsStack.push(row);
     }
+
+    this.initialCount = this.count;
+    this.frame = 0;
+    this.frameTimer = 0;
+    this.fireTimer = this.nextFireInterval(level);
   }
 
-  private randShoot(game: Game): void {
-    if (!this.mobsStack.length) return;
-    const lastRow = this.mobsStack[this.mobsStack.length - 1];
-    lastRow[0].color = COLORS.mobShoot;
-    lastRow[0].shoot(game);
+  /** Speeds up as aliens are destroyed (1 → maxSpeedMultiplier). */
+  private get speedMultiplier(): number {
+    const cleared = 1 - this.count / this.initialCount;
+    return 1 + cleared * (GROUP.maxSpeedMultiplier - 1);
+  }
+
+  private nextFireInterval(level: number): number {
+    const span = ALIEN_FIRE.baseIntervalMs - ALIEN_FIRE.minIntervalMs;
+    return (ALIEN_FIRE.minIntervalMs + Math.random() * span) / level;
+  }
+
+  /** The lowest alien in each column (grouped by x), i.e. who can fire. */
+  private bottomMobs(): Mob[] {
+    const byColumn = new Map<number, Mob>();
+    for (const row of this.mobsStack) {
+      for (const mob of row) {
+        const key = Math.round(mob.x);
+        const current = byColumn.get(key);
+        if (!current || mob.y > current.y) byColumn.set(key, mob);
+      }
+    }
+    return [...byColumn.values()];
+  }
+
+  private fire(game: Game): void {
+    const shooters = this.bottomMobs();
+    if (!shooters.length) return;
+    const mob = shooters[Math.floor(Math.random() * shooters.length)];
+    game.rockets.add(
+      new Rocket({
+        x: mob.x + mob.width / 2 - ROCKET.width / 2,
+        y: mob.y + mob.height,
+        width: ROCKET.width,
+        height: ROCKET.height,
+        color: COLORS.alienRocket,
+        vy: game.renderer.canvas.height * ALIEN_FIRE.speedFactor,
+        aims: ['ship'],
+      }),
+    );
   }
 
   update(game: Game): void {
@@ -88,13 +139,15 @@ export class MobsGroup {
       });
     }
     this.mobsStack = this.mobsStack.filter((row) => row.length);
+    if (!this.mobsStack.length) return;
 
     const oldX = this.x;
     const oldY = this.y;
     this.width -= this.x;
     this.height -= this.y;
 
-    const tmpX = this.x + (renderer.dt / 1000) * this.vx;
+    const dx = (renderer.dt / 1000) * this.vx * this.speedMultiplier;
+    const tmpX = this.x + dx;
     if (tmpX + this.width > renderer.canvas.width) {
       this.x = renderer.canvas.width - (tmpX + this.width - renderer.canvas.width) - this.width;
       this.y += this.vy;
@@ -107,13 +160,6 @@ export class MobsGroup {
       this.x = tmpX;
     }
 
-    // Reaching the ship's row ends the game.
-    if (game.ship.y < this.y + this.height) {
-      this.y -= this.y + this.height - game.ship.y;
-      game.ship.explode();
-      game.finish();
-    }
-
     // Shift every mob by the formation's delta.
     for (const row of this.mobsStack) {
       for (const mob of row) {
@@ -122,14 +168,39 @@ export class MobsGroup {
       }
     }
 
-    if (Math.random() < this.shootChance / renderer.fps) {
-      this.randShoot(game);
+    // Erode bunkers the swarm has descended into.
+    for (const bunker of game.bunkers) {
+      for (const row of this.mobsStack) {
+        for (const mob of row) bunker.erode(mob);
+      }
+    }
+
+    // Reaching the ship's row ends the game.
+    if (this.height + this.y > game.ship.y) {
+      game.gameOver();
+      return;
+    }
+
+    // Two-frame animation, faster as the swarm thins out.
+    this.frameTimer -= renderer.dt;
+    if (this.frameTimer <= 0) {
+      const t = 1 - this.count / this.initialCount;
+      this.frameTimer = GROUP.frameMsMax + t * (GROUP.frameMsMin - GROUP.frameMsMax);
+      this.frame ^= 1;
+      audio.marchTick();
+    }
+
+    // Firing.
+    this.fireTimer -= renderer.dt;
+    if (this.fireTimer <= 0) {
+      this.fireTimer = this.nextFireInterval(game.level);
+      if (game.rockets.alienCount() < ALIEN_FIRE.maxBullets) this.fire(game);
     }
   }
 
   draw(renderer: Renderer): void {
     for (const row of this.mobsStack) {
-      for (const mob of row) mob.draw(renderer);
+      for (const mob of row) mob.draw(renderer, this.frame);
     }
   }
 }

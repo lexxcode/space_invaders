@@ -2,6 +2,17 @@
 
 An HTML5 `<canvas>` clone of the classic [Space Invaders (1978)](https://lexxcode.github.io/space_invaders/), rewritten with **TypeScript** ES modules and bundled with **Vite**.
 
+Graphics are procedural pixel-art (no image assets), sound is synthesized with the WebAudio API.
+
+## Features
+
+- Animated alien swarm that accelerates as you thin it out, firing from random columns.
+- Destructible bunkers — chip away under fire, hide behind them.
+- Mystery UFO with a random bonus.
+- Lives, on-screen life icons, levels, score and persistent hi-score (localStorage).
+- Player death/respawn sequence and a Game Over screen.
+- Synthesized sound effects with a mute toggle.
+
 ## Controls
 
 | Key | Action |
@@ -9,6 +20,7 @@ An HTML5 `<canvas>` clone of the classic [Space Invaders (1978)](https://lexxcod
 | ← / → | Move the ship |
 | Space | Shoot |
 | Esc | Pause / resume |
+| M | Mute / unmute |
 
 ## Project structure
 

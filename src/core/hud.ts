@@ -3,18 +3,23 @@ export class Hud {
   private readonly fpsEl: HTMLElement;
   private readonly levelEl: HTMLElement;
   private readonly scoreEl: HTMLElement;
+  private readonly hiScoreEl: HTMLElement;
   private readonly livesEl: HTMLElement;
+  private readonly soundEl: HTMLElement;
 
   private fps = -1;
   private level = -1;
   private score = -1;
+  private hiScore = -1;
   private lives = -1;
 
   constructor() {
     this.fpsEl = Hud.require('.fps');
     this.levelEl = Hud.require('.level');
     this.scoreEl = Hud.require('.score');
+    this.hiScoreEl = Hud.require('.hiscore');
     this.livesEl = Hud.require('.lives');
+    this.soundEl = Hud.require('.sound');
   }
 
   private static require(selector: string): HTMLElement {
@@ -41,9 +46,19 @@ export class Hud {
     this.scoreEl.textContent = String(value);
   }
 
+  setHiScore(value: number): void {
+    if (value === this.hiScore) return;
+    this.hiScore = value;
+    this.hiScoreEl.textContent = String(value);
+  }
+
   setLives(value: number): void {
     if (value === this.lives) return;
     this.lives = value;
     this.livesEl.textContent = String(value);
+  }
+
+  setMuted(muted: boolean): void {
+    this.soundEl.textContent = muted ? 'off' : 'on';
   }
 }

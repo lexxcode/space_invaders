@@ -46,7 +46,15 @@ export class Rocket {
     this.x += (renderer.dt / 1000) * this.vx;
     this.y += (renderer.dt / 1000) * this.vy;
 
-    if (this.aims.includes('mob')) {
+    // Bunkers block every rocket, regardless of its target.
+    for (const bunker of game.bunkers) {
+      if (bunker.absorb(this)) {
+        this.active = false;
+        break;
+      }
+    }
+
+    if (this.active && this.aims.includes('mob')) {
       for (const row of game.mobsGroup.mobsStack) {
         for (const mob of row) {
           if (game.collides(this, mob)) {
@@ -56,12 +64,12 @@ export class Rocket {
         }
       }
     }
-    if (this.aims.includes('ufo') && game.collides(this, game.ufo)) {
+    if (this.active && this.aims.includes('ufo') && game.collides(this, game.ufo)) {
       game.ufo.explode(game);
       this.active = false;
     }
-    if (this.aims.includes('ship') && game.collides(this, game.ship)) {
-      game.ship.explode();
+    if (this.active && this.aims.includes('ship') && !game.ship.dying && game.collides(this, game.ship)) {
+      game.killShip();
       this.active = false;
     }
 
@@ -80,6 +88,11 @@ export class RocketManager {
 
   reset(): void {
     this.stack = [];
+  }
+
+  /** Number of live alien bullets (used to cap the swarm's fire rate). */
+  alienCount(): number {
+    return this.stack.reduce((n, r) => (r.aims.includes('ship') ? n + 1 : n), 0);
   }
 
   update(game: Game): void {

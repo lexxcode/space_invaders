@@ -1,7 +1,7 @@
 import type { Game } from '../core/Game';
 import type { Renderer } from '../core/Renderer';
-import { COLORS, ROCKET, SCORE } from '../config';
-import { Rocket } from './Rocket';
+import { ALIEN_SPRITES, COLORS, SCALE, SCORE } from '../config';
+import { audio } from '../core/audio';
 
 export interface MobOptions {
   color?: string;
@@ -10,7 +10,6 @@ export interface MobOptions {
   x?: number;
   y?: number;
   type?: number;
-  maxRocketStack?: number;
 }
 
 export class Mob {
@@ -21,43 +20,30 @@ export class Mob {
   x: number;
   y: number;
   type: number;
-  maxRocketStack: number;
-  rocketCount = 0;
 
   constructor(options: MobOptions = {}) {
-    this.color = options.color ?? COLORS.mob;
-    this.width = options.width ?? 32;
-    this.height = options.height ?? 32;
+    this.type = options.type ?? 1;
+    this.color = options.color ?? COLORS.mob[this.type] ?? COLORS.mob[1];
+    this.width = options.width ?? 24;
+    this.height = options.height ?? 16;
     this.x = options.x ?? 0;
     this.y = options.y ?? 0;
-    this.type = options.type ?? 1;
-    this.maxRocketStack = options.maxRocketStack ?? 1;
-  }
-
-  shoot(game: Game): void {
-    if (this.rocketCount >= this.maxRocketStack) return;
-    game.rockets.add(
-      new Rocket({
-        x: this.width / 2 + this.x - 2.5,
-        y: this.y + this.height,
-        width: ROCKET.width,
-        height: ROCKET.height,
-        vy: game.renderer.canvas.height,
-        aims: ['ship'],
-        onComplete: () => {
-          this.rocketCount--;
-        },
-      }),
-    );
-    this.rocketCount++;
   }
 
   explode(game: Game): void {
-    if (this.active) game.score += SCORE.mob * this.type;
+    if (this.active) {
+      game.score += SCORE.mob * this.type;
+      audio.alienDeath();
+    }
     this.active = false;
   }
 
-  draw(renderer: Renderer): void {
-    renderer.fillRect(this.x, this.y, this.width, this.height, this.color);
+  draw(renderer: Renderer, frame = 0): void {
+    const sprite = ALIEN_SPRITES[this.type];
+    if (!sprite) return;
+    const matrix = sprite[frame] ?? sprite[0];
+    const sx = this.x + (this.width - matrix[0].length * SCALE.alien) / 2;
+    const sy = this.y + (this.height - matrix.length * SCALE.alien) / 2;
+    renderer.drawSprite(matrix, sx, sy, SCALE.alien, this.color);
   }
 }

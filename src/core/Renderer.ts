@@ -53,6 +53,17 @@ export class Renderer {
     this.ctx.fillRect(x, y, width, height);
   }
 
+  /** Draw a pixel-matrix sprite with its top-left corner at (x, y). */
+  drawSprite(matrix: number[][], x: number, y: number, scale: number, color: string): void {
+    this.ctx.fillStyle = color;
+    for (let r = 0; r < matrix.length; r++) {
+      const row = matrix[r];
+      for (let c = 0; c < row.length; c++) {
+        if (row[c]) this.ctx.fillRect(x + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+
   setPaused(paused: boolean): void {
     this.canvas.classList.toggle('cnvs_pause', paused);
   }
