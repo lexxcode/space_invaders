@@ -1,22 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Space Invaders</title>
-    <link rel="stylesheet" type="text/css" href="css/style.css" media="all">
-    <script src="js/onReady.js"></script>
-    <script src="js/ready.js"></script>
-</head>
-<body>
-    <div class="wrap clearfix">
-        <div class="cont"></div>
-        <div class="aside">
-            <div class="gametitle">Space Invaders</div>
-            <div class="gameData">FPS: <span class="fps"></span></div>
-            <div class="gameData">Level: <span class="level"></span></div>
-            <div class="gameData">Score: <span class="score"></span></div>
-            <div class="gameData">Lives: <span class="lives"></span></div>
-        </div>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="cont"></div>
+      <aside class="aside">
+        <h1 class="gametitle">Space Invaders</h1>
+        <div class="gameData">FPS: <span class="fps">0</span></div>
+        <div class="gameData">Level: <span class="level">0</span></div>
+        <div class="gameData">Score: <span class="score">0</span></div>
+        <div class="gameData">Lives: <span class="lives">0</span></div>
+      </aside>
     </div>
-</body>
+  </body>
 </html>
