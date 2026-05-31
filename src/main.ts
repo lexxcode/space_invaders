@@ -13,6 +13,7 @@ const game = new Game(renderer, hud);
 function loop(): void {
   renderer.tick();
   game.frame();
+  renderer.present();
   requestAnimationFrame(loop);
 }
 
