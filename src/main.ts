@@ -6,7 +6,14 @@ import { Renderer } from './core/Renderer';
 const container = document.querySelector<HTMLElement>('.cont');
 if (!container) throw new Error('Game container ".cont" not found');
 
-const renderer = new Renderer(container);
+let renderer: Renderer;
+try {
+  renderer = await Renderer.create(container);
+} catch (err) {
+  container.textContent = 'This game requires WebGPU, which is not available in your browser.';
+  throw err;
+}
+
 const hud = new Hud();
 const game = new Game(renderer, hud);
 

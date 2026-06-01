@@ -1,3 +1,4 @@
+/// <reference types="@webgpu/types" />
 import { CANVAS, COLORS } from '../config';
 
 export interface TextOptions {
@@ -12,13 +13,14 @@ export interface TextOptions {
 type RGBA = [number, number, number, number];
 
 interface TextEntry {
-  tex: WebGLTexture;
+  tex: GPUTexture;
+  bindGroup: GPUBindGroup;
   w: number;
   h: number;
 }
 
 interface TextCommand {
-  tex: WebGLTexture;
+  bindGroup: GPUBindGroup;
   x: number;
   y: number;
   w: number;
@@ -28,44 +30,46 @@ interface TextCommand {
 const FLOATS_PER_VERTEX = 6; // x, y, r, g, b, a
 const VERTS_PER_QUAD = 6;
 
-const QUAD_VS = `#version 300 es
-in vec2 a_pos;
-in vec4 a_color;
-uniform vec2 u_res;
-out vec4 v_color;
-void main() {
-  vec2 clip = vec2(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0);
-  gl_Position = vec4(clip, 0.0, 1.0);
-  v_color = a_color;
-}`;
+const QUAD_WGSL = `
+struct U { res: vec2<f32> };
+@group(0) @binding(0) var<uniform> u: U;
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) color: vec4<f32> };
+@vertex fn vs(@location(0) p: vec2<f32>, @location(1) c: vec4<f32>) -> VOut {
+  var o: VOut;
+  let clip = vec2<f32>(p.x / u.res.x * 2.0 - 1.0, 1.0 - p.y / u.res.y * 2.0);
+  o.pos = vec4<f32>(clip, 0.0, 1.0);
+  o.color = c;
+  return o;
+}
+@fragment fn fs(@location(0) color: vec4<f32>) -> @location(0) vec4<f32> { return color; }
+`;
 
-const QUAD_FS = `#version 300 es
-precision mediump float;
-in vec4 v_color;
-out vec4 o_color;
-void main() { o_color = v_color; }`;
+const TEXT_WGSL = `
+struct U { res: vec2<f32> };
+@group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var samp: sampler;
+@group(1) @binding(1) var tex: texture_2d<f32>;
+struct VOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex fn vs(@location(0) p: vec2<f32>, @location(1) uv: vec2<f32>) -> VOut {
+  var o: VOut;
+  let clip = vec2<f32>(p.x / u.res.x * 2.0 - 1.0, 1.0 - p.y / u.res.y * 2.0);
+  o.pos = vec4<f32>(clip, 0.0, 1.0);
+  o.uv = uv;
+  return o;
+}
+@fragment fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+  return textureSample(tex, samp, uv);
+}
+`;
 
-const TEXT_VS = `#version 300 es
-in vec2 a_pos;
-in vec2 a_uv;
-uniform vec2 u_res;
-out vec2 v_uv;
-void main() {
-  vec2 clip = vec2(a_pos.x / u_res.x * 2.0 - 1.0, 1.0 - a_pos.y / u_res.y * 2.0);
-  gl_Position = vec4(clip, 0.0, 1.0);
-  v_uv = a_uv;
-}`;
+const BLEND: GPUBlendState = {
+  color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+  alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+};
 
-const TEXT_FS = `#version 300 es
-precision mediump float;
-in vec2 v_uv;
-uniform sampler2D u_tex;
-out vec4 o_color;
-void main() { o_color = texture(u_tex, v_uv); }`;
-
-/** WebGL2 renderer exposing the same 2D-style drawing API the game already
- *  uses. Coloured rectangles (incl. pixel sprites) are batched into a single
- *  buffer; text is rasterized to a texture and drawn as a textured quad. */
+/** WebGPU renderer exposing the same 2D-style drawing API the game already
+ *  uses. Coloured rectangles (incl. pixel sprites) are batched into one vertex
+ *  buffer; text is rasterized to a texture and drawn as textured quads. */
 export class Renderer {
   readonly canvas: HTMLCanvasElement;
 
@@ -77,19 +81,22 @@ export class Renderer {
   private prevTick = performance.now();
   private diffStack = 0;
 
-  private readonly gl: WebGL2RenderingContext;
+  private readonly device: GPUDevice;
+  private readonly context: GPUCanvasContext;
 
-  private readonly quadProgram: WebGLProgram;
-  private readonly quadVao: WebGLVertexArrayObject;
-  private readonly quadBuffer: WebGLBuffer;
-  private readonly quadResLoc: WebGLUniformLocation;
+  private readonly quadPipeline: GPURenderPipeline;
+  private readonly textPipeline: GPURenderPipeline;
+  private readonly sampler: GPUSampler;
+  private readonly uniformBuffer: GPUBuffer;
+  private readonly quadResBindGroup: GPUBindGroup;
+  private readonly textResBindGroup: GPUBindGroup;
+
+  private quadVertexBuffer: GPUBuffer | null = null;
+  private textVertexBuffer: GPUBuffer | null = null;
+
   private quadData = new Float32Array(FLOATS_PER_VERTEX * VERTS_PER_QUAD * 4096);
   private quadVertices = 0;
 
-  private readonly textProgram: WebGLProgram;
-  private readonly textVao: WebGLVertexArrayObject;
-  private readonly textBuffer: WebGLBuffer;
-  private readonly textResLoc: WebGLUniformLocation;
   private readonly textCmds: TextCommand[] = [];
   private readonly textCache = new Map<string, TextEntry>();
   private readonly textCanvas = document.createElement('canvas');
@@ -98,47 +105,97 @@ export class Renderer {
   private readonly colorCache = new Map<string, RGBA>();
   private clearColor: RGBA = [0, 0, 0, 1];
 
-  constructor(parent: HTMLElement) {
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = CANVAS.width;
-    this.canvas.height = CANVAS.height;
-    this.canvas.classList.add('cnvs');
+  /** WebGPU device acquisition is async, so construct via this factory. */
+  static async create(parent: HTMLElement): Promise<Renderer> {
+    if (!navigator.gpu) throw new Error('WebGPU is not supported in this browser');
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('No suitable GPU adapter found');
+    const device = await adapter.requestDevice();
 
-    const gl = this.canvas.getContext('webgl2');
-    if (!gl) throw new Error('WebGL2 is not available');
-    this.gl = gl;
-    parent.appendChild(this.canvas);
+    const canvas = document.createElement('canvas');
+    canvas.width = CANVAS.width;
+    canvas.height = CANVAS.height;
+    canvas.classList.add('cnvs');
+
+    const context = canvas.getContext('webgpu');
+    if (!context) throw new Error('WebGPU canvas context is not available');
+    const format = navigator.gpu.getPreferredCanvasFormat();
+    context.configure({ device, format, alphaMode: 'opaque' });
+
+    return new Renderer(parent, canvas, device, context, format);
+  }
+
+  private constructor(
+    parent: HTMLElement,
+    canvas: HTMLCanvasElement,
+    device: GPUDevice,
+    context: GPUCanvasContext,
+    format: GPUTextureFormat,
+  ) {
+    this.canvas = canvas;
+    this.device = device;
+    this.context = context;
+    parent.appendChild(canvas);
 
     const textCtx = this.textCanvas.getContext('2d');
     if (!textCtx) throw new Error('2D context (for text rasterization) is not available');
     this.textCtx = textCtx;
 
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    const quadModule = device.createShaderModule({ code: QUAD_WGSL });
+    this.quadPipeline = device.createRenderPipeline({
+      layout: 'auto',
+      vertex: {
+        module: quadModule,
+        entryPoint: 'vs',
+        buffers: [
+          {
+            arrayStride: FLOATS_PER_VERTEX * 4,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x2' },
+              { shaderLocation: 1, offset: 8, format: 'float32x4' },
+            ],
+          },
+        ],
+      },
+      fragment: { module: quadModule, entryPoint: 'fs', targets: [{ format, blend: BLEND }] },
+      primitive: { topology: 'triangle-list' },
+    });
 
-    // Coloured-quad pipeline.
-    this.quadProgram = this.createProgram(QUAD_VS, QUAD_FS);
-    this.quadResLoc = this.uniform(this.quadProgram, 'u_res');
-    this.quadBuffer = this.createBuffer();
-    this.quadVao = this.createVao();
-    gl.bindVertexArray(this.quadVao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
-    this.attrib(this.quadProgram, 'a_pos', 2, FLOATS_PER_VERTEX * 4, 0);
-    this.attrib(this.quadProgram, 'a_color', 4, FLOATS_PER_VERTEX * 4, 2 * 4);
-    gl.bindVertexArray(null);
+    const textModule = device.createShaderModule({ code: TEXT_WGSL });
+    this.textPipeline = device.createRenderPipeline({
+      layout: 'auto',
+      vertex: {
+        module: textModule,
+        entryPoint: 'vs',
+        buffers: [
+          {
+            arrayStride: 4 * 4,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x2' },
+              { shaderLocation: 1, offset: 8, format: 'float32x2' },
+            ],
+          },
+        ],
+      },
+      fragment: { module: textModule, entryPoint: 'fs', targets: [{ format, blend: BLEND }] },
+      primitive: { topology: 'triangle-list' },
+    });
 
-    // Text pipeline (textured quads).
-    this.textProgram = this.createProgram(TEXT_VS, TEXT_FS);
-    this.textResLoc = this.uniform(this.textProgram, 'u_res');
-    this.textBuffer = this.createBuffer();
-    this.textVao = this.createVao();
-    gl.bindVertexArray(this.textVao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
-    this.attrib(this.textProgram, 'a_pos', 2, 4 * 4, 0);
-    this.attrib(this.textProgram, 'a_uv', 2, 4 * 4, 2 * 4);
-    gl.bindVertexArray(null);
+    this.sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+    this.uniformBuffer = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(this.uniformBuffer, 0, new Float32Array([canvas.width, canvas.height, 0, 0]));
+
+    this.quadResBindGroup = device.createBindGroup({
+      layout: this.quadPipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+    });
+    this.textResBindGroup = device.createBindGroup({
+      layout: this.textPipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+    });
   }
 
   // --- timing (unchanged) ---------------------------------------------------
@@ -218,50 +275,60 @@ export class Renderer {
       py = y - entry.h;
     }
 
-    this.textCmds.push({ tex: entry.tex, x: px, y: py, w: entry.w, h: entry.h });
+    this.textCmds.push({ bindGroup: entry.bindGroup, x: px, y: py, w: entry.w, h: entry.h });
   }
 
-  /** Flush the frame: clear the framebuffer and issue the batched draws. */
+  /** Flush the frame: clear the target and issue the batched draws. */
   present(): void {
-    const gl = this.gl;
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.clearColor(this.clearColor[0], this.clearColor[1], this.clearColor[2], this.clearColor[3]);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    const device = this.device;
+    const encoder = device.createCommandEncoder();
+    const [r, g, b, a] = this.clearColor;
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.context.getCurrentTexture().createView(),
+          clearValue: { r, g, b, a },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
+    });
 
     if (this.quadVertices > 0) {
-      gl.useProgram(this.quadProgram);
-      gl.bindVertexArray(this.quadVao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, this.quadData.subarray(0, this.quadVertices * FLOATS_PER_VERTEX), gl.DYNAMIC_DRAW);
-      gl.uniform2f(this.quadResLoc, this.canvas.width, this.canvas.height);
-      gl.drawArrays(gl.TRIANGLES, 0, this.quadVertices);
+      const data = this.quadData.subarray(0, this.quadVertices * FLOATS_PER_VERTEX);
+      this.quadVertexBuffer = this.ensureBuffer(this.quadVertexBuffer, data.byteLength);
+      device.queue.writeBuffer(this.quadVertexBuffer, 0, data);
+      pass.setPipeline(this.quadPipeline);
+      pass.setBindGroup(0, this.quadResBindGroup);
+      pass.setVertexBuffer(0, this.quadVertexBuffer);
+      pass.draw(this.quadVertices);
     }
 
     if (this.textCmds.length > 0) {
-      gl.useProgram(this.textProgram);
-      gl.bindVertexArray(this.textVao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuffer);
-      gl.uniform2f(this.textResLoc, this.canvas.width, this.canvas.height);
-      gl.activeTexture(gl.TEXTURE0);
+      const floats = new Float32Array(this.textCmds.length * 6 * 4);
+      let o = 0;
       for (const cmd of this.textCmds) {
         const x2 = cmd.x + cmd.w;
         const y2 = cmd.y + cmd.h;
-        // prettier-ignore
-        const verts = new Float32Array([
-          cmd.x, cmd.y, 0, 0,
-          x2,    cmd.y, 1, 0,
-          cmd.x, y2,    0, 1,
-          cmd.x, y2,    0, 1,
-          x2,    cmd.y, 1, 0,
-          x2,    y2,    1, 1,
-        ]);
-        gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW);
-        gl.bindTexture(gl.TEXTURE_2D, cmd.tex);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        floats.set(
+          [cmd.x, cmd.y, 0, 0, x2, cmd.y, 1, 0, cmd.x, y2, 0, 1, cmd.x, y2, 0, 1, x2, cmd.y, 1, 0, x2, y2, 1, 1],
+          o,
+        );
+        o += 24;
       }
+      this.textVertexBuffer = this.ensureBuffer(this.textVertexBuffer, floats.byteLength);
+      device.queue.writeBuffer(this.textVertexBuffer, 0, floats);
+      pass.setPipeline(this.textPipeline);
+      pass.setBindGroup(0, this.textResBindGroup);
+      pass.setVertexBuffer(0, this.textVertexBuffer);
+      this.textCmds.forEach((cmd, i) => {
+        pass.setBindGroup(1, cmd.bindGroup);
+        pass.draw(6, 1, i * 6);
+      });
     }
 
-    gl.bindVertexArray(null);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
   }
 
   // --- internals ------------------------------------------------------------
@@ -283,6 +350,13 @@ export class Renderer {
     const grown = new Float32Array(this.quadData.length * 2);
     grown.set(this.quadData);
     this.quadData = grown;
+  }
+
+  private ensureBuffer(buffer: GPUBuffer | null, neededBytes: number): GPUBuffer {
+    if (buffer && buffer.size >= neededBytes) return buffer;
+    const size = Math.max(neededBytes, (buffer?.size ?? 256) * 2);
+    buffer?.destroy();
+    return this.device.createBuffer({ size, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
   }
 
   private getTextTexture(text: string, size: number, color: string, weight: string, font: string): TextEntry {
@@ -312,23 +386,29 @@ export class Renderer {
     ctx.fillStyle = color;
     ctx.fillText(text, 1, ascent + 1);
 
-    const gl = this.gl;
-    const tex = gl.createTexture();
-    if (!tex) throw new Error('Failed to create texture');
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.textCanvas);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const device = this.device;
+    const tex = device.createTexture({
+      size: [w, h],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    device.queue.copyExternalImageToTexture({ source: this.textCanvas }, { texture: tex }, [w, h]);
 
-    const entry: TextEntry = { tex, w, h };
+    const bindGroup = device.createBindGroup({
+      layout: this.textPipeline.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: this.sampler },
+        { binding: 1, resource: tex.createView() },
+      ],
+    });
+
+    const entry: TextEntry = { tex, bindGroup, w, h };
     this.textCache.set(key, entry);
     return entry;
   }
 
   private clearTextCache(): void {
-    for (const entry of this.textCache.values()) this.gl.deleteTexture(entry.tex);
+    for (const entry of this.textCache.values()) entry.tex.destroy();
     this.textCache.clear();
   }
 
@@ -352,55 +432,5 @@ export class Renderer {
 
     this.colorCache.set(color, rgba);
     return rgba;
-  }
-
-  private createProgram(vsSrc: string, fsSrc: string): WebGLProgram {
-    const gl = this.gl;
-    const program = gl.createProgram();
-    if (!program) throw new Error('Failed to create program');
-    gl.attachShader(program, this.createShader(gl.VERTEX_SHADER, vsSrc));
-    gl.attachShader(program, this.createShader(gl.FRAGMENT_SHADER, fsSrc));
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
-    }
-    return program;
-  }
-
-  private createShader(type: number, src: string): WebGLShader {
-    const gl = this.gl;
-    const shader = gl.createShader(type);
-    if (!shader) throw new Error('Failed to create shader');
-    gl.shaderSource(shader, src);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      throw new Error(`Shader compile failed: ${gl.getShaderInfoLog(shader)}`);
-    }
-    return shader;
-  }
-
-  private createBuffer(): WebGLBuffer {
-    const buffer = this.gl.createBuffer();
-    if (!buffer) throw new Error('Failed to create buffer');
-    return buffer;
-  }
-
-  private createVao(): WebGLVertexArrayObject {
-    const vao = this.gl.createVertexArray();
-    if (!vao) throw new Error('Failed to create vertex array');
-    return vao;
-  }
-
-  private uniform(program: WebGLProgram, name: string): WebGLUniformLocation {
-    const loc = this.gl.getUniformLocation(program, name);
-    if (!loc) throw new Error(`Uniform "${name}" not found`);
-    return loc;
-  }
-
-  private attrib(program: WebGLProgram, name: string, size: number, stride: number, offset: number): void {
-    const gl = this.gl;
-    const loc = gl.getAttribLocation(program, name);
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
   }
 }

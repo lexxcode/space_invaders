@@ -2,7 +2,9 @@
 
 An HTML5 `<canvas>` clone of the classic [Space Invaders (1978)](https://lexxcode.github.io/space_invaders/), rewritten with **TypeScript** ES modules and bundled with **Vite**.
 
-Graphics are procedural pixel-art (no image assets) rendered through **WebGL2**, sound is synthesized with the WebAudio API.
+Graphics are procedural pixel-art (no image assets) rendered through **WebGPU**, sound is synthesized with the WebAudio API.
+
+> Requires a WebGPU-capable browser (recent Chrome/Edge, Safari 17.4+, or Firefox with WebGPU enabled).
 
 ## Features
 
